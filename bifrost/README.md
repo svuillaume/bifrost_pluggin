@@ -201,6 +201,34 @@ Stop: `docker compose down`
 
 **Page reading** uses `chrome.scripting` to extract visible text — no form data, no cookies, no credentials. Chrome prompts for permission per site.
 
+### `chrome.storage.session` vs `chrome.storage.local` — why it matters
+
+Chrome extensions can store data in two places:
+
+| | `chrome.storage.local` | `chrome.storage.session` |
+|---|---|---|
+| **Stored on** | Disk (persists on disk like a database) | RAM only |
+| **Survives Chrome close** | Yes | No — wiped on close |
+| **Risk if device stolen** | Key readable from disk | Nothing to read |
+| **Used for** | Non-sensitive prefs (model choice) | API key, endpoint URL |
+
+Many older or simpler extensions use `chrome.storage.local` for convenience — including the now-removed `popup.js` in this repo. This means the API key would be written to Chrome's profile directory on disk and readable by any process with access to that folder.
+
+This extension deliberately uses `chrome.storage.session` for all sensitive values. **How it works:**
+
+1. On panel open, `config.json` is fetched once via `chrome.runtime.getURL`
+2. The key and URL are immediately written to `chrome.storage.session` (RAM)
+3. `config.json` is only read — never written back, never cached by the browser
+4. When Chrome closes, session storage is wiped automatically — nothing persists
+
+**To verify this yourself:**
+
+```
+chrome://extensions → Bifrost Chat → Service Worker → inspect → Application → Storage
+```
+
+You will see `bf_key` and `bf_url` under Session Storage (not Local Storage).
+
 ---
 
 ## Code Security Scan
