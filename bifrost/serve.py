@@ -296,6 +296,43 @@ class Handler(http.server.BaseHTTPRequestHandler):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    # Maps framework short IDs → exact --report_name strings the lacework CLI accepts
+    COMPLIANCE_REPORT_NAMES = {
+        # AWS
+        'AWS_CIS_14':       'CIS Amazon Web Services Foundations Benchmark v1.4.0',
+        'AWS_CIS_12':       'CIS Amazon Web Services Foundations Benchmark v1.2.0',
+        'AWS_NIST_CSF':     'AWS NIST CSF',
+        'AWS_NIST_80053':   'AWS NIST 800-53 rev5',
+        'AWS_NIST_800171':  'AWS NIST 800-171 rev2',
+        'AWS_PCI_321':      'AWS PCI DSS 3.2.1',
+        'AWS_PCI_40':       'AWS PCI DSS 4.0.0',
+        'AWS_SOC2':         'AWS SOC 2 Report Rev2',
+        'AWS_HIPAA':        'AWS HIPAA Report',
+        'AWS_ISO27001':     'AWS ISO 27001:2013 Report',
+        # Azure
+        'AZURE_CIS_131':    'Azure CIS 1.3.1 Report',
+        'AZURE_CIS_15':     'CIS Microsoft Azure',
+        'AZURE_NIST_CSF':   'Azure NIST CSF Report',
+        'AZURE_NIST_80053': 'Azure NIST 800-53 Rev5 Report',
+        'AZURE_NIST_800171':'Azure NIST 800-171 Rev2 Report',
+        'AZURE_PCI_321':    'Azure PCI DSS 3.2.1 CIS 1.5',
+        'AZURE_PCI_40':     'Azure PCI DSS 4.0.0 CIS 1.5',
+        'AZURE_SOC2':       'Azure SOC 2 Report Rev2',
+        'AZURE_HIPAA':      'Azure HIPAA Report',
+        'AZURE_ISO27001':   'Azure ISO 27001 Report',
+        # GCP
+        'GCP_CIS_13':       'GCP CIS Benchmark 1.3',
+        'GCP_CIS_12':       'GCP CIS Benchmark 1.2',
+        'GCP_NIST_CSF':     'GCP NIST CSF Report',
+        'GCP_NIST_80053':   'GCP NIST 800-53 rev5',
+        'GCP_NIST_800171':  'GCP NIST 800 171 REV2 Report',
+        'GCP_PCI_321':      'GCP PCI DSS 3.2.1',
+        'GCP_PCI_40':       'GCP PCI DSS 4.0.0',
+        'GCP_SOC2':         'GCP SOC 2 Report Rev2',
+        'GCP_HIPAA':        'GCP HIPAA Report Rev2',
+        'GCP_ISO27001':     'GCP ISO 27001 Report',
+    }
+
     def serve_compliance(self):
         """Accept JSON {cloud, framework, accountId}, run lacework compliance get-report --pdf."""
         if not shutil.which('lacework'):
@@ -315,30 +352,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if cloud not in cloud_cmd_map:
             self.send_json(400, json.dumps({'error': f'Unknown cloud: {cloud}'}).encode())
             return
-        if not framework:
-            self.send_json(400, json.dumps({'error': 'framework is required'}).encode())
+
+        report_name = self.COMPLIANCE_REPORT_NAMES.get(framework)
+        if not report_name:
+            self.send_json(400, json.dumps({'error': f'Unknown framework: {framework}'}).encode())
             return
 
         tmpdir = tempfile.mkdtemp(prefix='bifrost-compliance-')
         try:
-            pdf_file = os.path.join(tmpdir, 'report.pdf')
-            cmd = ['lacework', 'compliance', cloud_cmd_map[cloud], 'get-report',
-                   '--pdf', f'--pdf-file={pdf_file}',
-                   f'--type={framework}', '--noninteractive']
+            # lacework writes the PDF to cwd with an auto-generated filename
+            cmd = ['lacework', 'compliance', cloud_cmd_map[cloud], 'get-report']
             if account_id:
-                cmd.insert(4, account_id)  # positional arg before flags
+                cmd.append(account_id)
+            cmd += ['--pdf', f'--report_name={report_name}', '--noninteractive']
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=120, cwd=tmpdir)
 
-            if os.path.exists(pdf_file):
-                with open(pdf_file, 'rb') as f:
+            # Find the generated PDF in tmpdir
+            import glob as _glob
+            pdfs = _glob.glob(os.path.join(tmpdir, '*.pdf'))
+            if pdfs:
+                with open(pdfs[0], 'rb') as f:
                     pdf_bytes = f.read()
-                filename = f'compliance-{cloud}-{framework}.pdf'
-                self.send_pdf(pdf_bytes, filename)
+                safe_fw = framework.replace('/', '-')
+                self.send_pdf(pdf_bytes, f'compliance-{cloud}-{safe_fw}.pdf')
             else:
-                stderr = result.stderr[-2000:] if result.stderr else ''
+                stderr = (result.stdout + result.stderr)[-2000:]
                 self.send_json(500, json.dumps({
-                    'error': 'No PDF generated — check lacework credentials or account configuration',
+                    'error': 'No PDF generated — check lacework credentials or account ID',
                     'stderr': stderr,
                 }).encode())
         except subprocess.TimeoutExpired:
