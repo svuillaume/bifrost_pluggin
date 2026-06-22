@@ -494,8 +494,9 @@ async function extractPageCode() {
   const ghRepo = githubRepoFromUrl(tab.url || '');
   if (ghRepo) {
     const files = await fetchGithubRepoFiles(ghRepo.owner, ghRepo.repo);
+    const fileList = files.map(f => `  • ${f.path || f.filename}`).join('\n');
     appendTurn('system',
-      `🔍 GitHub: ${ghRepo.owner}/${ghRepo.repo} — ${files.length} file${files.length !== 1 ? 's' : ''} fetched`);
+      `🔍 GitHub: ${ghRepo.owner}/${ghRepo.repo} — ${files.length} file${files.length !== 1 ? 's' : ''} fetched:\n${fileList}`);
     return { files, title: tab.title || 'page', url: tab.url || '' };
   }
 
@@ -695,3 +696,115 @@ el('sbom').addEventListener('click',    () => runCodeSec('sbom'));
 el('codesec-close').addEventListener('click', () => {
   el('codesec-panel').classList.remove('open');
 });
+
+// ── FortiCNAPP Compliance Report ──────────────────────────────────────────
+
+const FRAMEWORKS = {
+  aws: [
+    { id: 'CIS_1_2',           label: 'CIS AWS 1.2' },
+    { id: 'CIS_1_4',           label: 'CIS AWS 1.4' },
+    { id: 'NIST_800-53_REV4',  label: 'NIST 800-53 Rev 4' },
+    { id: 'NIST_800-171_REV2', label: 'NIST 800-171 Rev 2' },
+    { id: 'PCI_DSS_3_2_1',     label: 'PCI DSS 3.2.1' },
+    { id: 'SOC_2',             label: 'SOC 2' },
+    { id: 'HIPAA',             label: 'HIPAA' },
+    { id: 'ISO_2700_2013',     label: 'ISO 27001:2013' },
+  ],
+  azure: [
+    { id: 'CIS_1_3_1',     label: 'CIS Azure 1.3.1' },
+    { id: 'CIS_1_5',       label: 'CIS Azure 1.5' },
+    { id: 'NIST_CSF',      label: 'NIST CSF' },
+    { id: 'PCI_DSS_3_2_1', label: 'PCI DSS 3.2.1' },
+    { id: 'SOC_2',         label: 'SOC 2' },
+    { id: 'HIPAA',         label: 'HIPAA' },
+    { id: 'ISO_2700_2013', label: 'ISO 27001:2013' },
+  ],
+  gcp: [
+    { id: 'CIS_1_1',       label: 'CIS GCP 1.1' },
+    { id: 'CIS_1_3',       label: 'CIS GCP 1.3' },
+    { id: 'NIST_CSF',      label: 'NIST CSF' },
+    { id: 'PCI_DSS_3_2_1', label: 'PCI DSS 3.2.1' },
+    { id: 'SOC_2',         label: 'SOC 2' },
+    { id: 'HIPAA',         label: 'HIPAA' },
+    { id: 'ISO_2700_2013', label: 'ISO 27001:2013' },
+  ],
+};
+
+function populateFrameworks(cloud) {
+  const sel = el('comp-framework');
+  sel.innerHTML = '';
+  (FRAMEWORKS[cloud] || []).forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    opt.textContent = f.label;
+    sel.appendChild(opt);
+  });
+}
+
+// Initialise framework list on load
+populateFrameworks('aws');
+
+el('comp-cloud').addEventListener('change', () => populateFrameworks(el('comp-cloud').value));
+
+el('compliance').addEventListener('click', () => {
+  const panel = el('compliance-panel');
+  panel.classList.toggle('open');
+  // close codesec panel if open
+  el('codesec-panel').classList.remove('open');
+});
+
+el('compliance-close').addEventListener('click', () => {
+  el('compliance-panel').classList.remove('open');
+});
+
+async function runComplianceReport() {
+  const btn       = el('comp-generate');
+  const statusEl  = el('comp-status');
+  const cloud     = el('comp-cloud').value;
+  const framework = el('comp-framework').value;
+  const accountId = el('comp-account').value.trim();
+
+  btn.disabled = true;
+  statusEl.textContent = 'generating…';
+  statusEl.className   = '';
+  setStatus('generating compliance PDF…', 'busy');
+
+  try {
+    const res = await fetch('http://localhost:8765/compliance', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ cloud, framework, accountId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/pdf')) {
+      const blob    = await res.blob();
+      const url     = URL.createObjectURL(blob);
+      const fname   = `compliance-${cloud}-${framework}.pdf`;
+      chrome.downloads
+        ? chrome.downloads.download({ url, filename: fname })
+        : chrome.tabs.create({ url });
+      statusEl.textContent = '✓ PDF downloaded';
+      statusEl.className   = 'ok';
+      setStatus('PDF ready', 'ok');
+      appendTurn('system', `📋 Compliance PDF: ${cloud.toUpperCase()} / ${framework}`);
+    } else {
+      const data = await res.json();
+      throw new Error(data.error || 'No PDF returned');
+    }
+  } catch (e) {
+    statusEl.textContent = `✗ ${e.message}`;
+    statusEl.className   = 'err';
+    setStatus('error', 'err');
+    appendTurn('system', `Compliance error: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+el('comp-generate').addEventListener('click', runComplianceReport);

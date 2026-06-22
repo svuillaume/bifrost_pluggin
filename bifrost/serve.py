@@ -49,6 +49,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # ── helpers ───────────────────────────────────────────────────────────
 
+    def send_pdf(self, body: bytes, filename: str):
+        self.send_response(200)
+        for k, v in CORS.items():
+            self.send_header(k, v)
+        self.send_header('Content-Type', 'application/pdf')
+        self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_json(self, status, body: bytes):
         self.send_response(status)
         for k, v in CORS.items():
@@ -81,6 +91,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.serve_codesec()
         elif self.path == '/sbom':
             self.serve_sbom()
+        elif self.path == '/compliance':
+            self.serve_compliance()
         elif self.path.startswith('/proxy/'):
             self.proxy_upstream()
         else:
@@ -284,6 +296,56 @@ class Handler(http.server.BaseHTTPRequestHandler):
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def serve_compliance(self):
+        """Accept JSON {cloud, framework, accountId}, run lacework compliance get-report --pdf."""
+        if not shutil.which('lacework'):
+            self.send_json(503, json.dumps({'error': 'lacework CLI not found'}).encode())
+            return
+        try:
+            payload = json.loads(self._read_body())
+        except json.JSONDecodeError:
+            self.send_error(400, 'Expected JSON {cloud, framework, accountId}')
+            return
+
+        cloud      = payload.get('cloud', '').lower()
+        framework  = payload.get('framework', '').strip()
+        account_id = payload.get('accountId', '').strip()
+
+        cloud_cmd_map = {'aws': 'aws', 'azure': 'azure', 'gcp': 'google'}
+        if cloud not in cloud_cmd_map:
+            self.send_json(400, json.dumps({'error': f'Unknown cloud: {cloud}'}).encode())
+            return
+        if not framework:
+            self.send_json(400, json.dumps({'error': 'framework is required'}).encode())
+            return
+
+        tmpdir = tempfile.mkdtemp(prefix='bifrost-compliance-')
+        try:
+            pdf_file = os.path.join(tmpdir, 'report.pdf')
+            cmd = ['lacework', 'compliance', cloud_cmd_map[cloud], 'get-report',
+                   '--pdf', f'--pdf-file={pdf_file}',
+                   f'--type={framework}', '--noninteractive']
+            if account_id:
+                cmd.insert(4, account_id)  # positional arg before flags
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+            if os.path.exists(pdf_file):
+                with open(pdf_file, 'rb') as f:
+                    pdf_bytes = f.read()
+                filename = f'compliance-{cloud}-{framework}.pdf'
+                self.send_pdf(pdf_bytes, filename)
+            else:
+                stderr = result.stderr[-2000:] if result.stderr else ''
+                self.send_json(500, json.dumps({
+                    'error': 'No PDF generated — check lacework credentials or account configuration',
+                    'stderr': stderr,
+                }).encode())
+        except subprocess.TimeoutExpired:
+            self.send_json(504, json.dumps({'error': 'compliance report timed out'}).encode())
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def log_message(self, fmt, *args):
         print(f'  {self.address_string()} {fmt % args}')
 
@@ -294,8 +356,9 @@ print(f'Bifrost chatbox  →  http://localhost:{PORT}')
 print(f'Virtual key      →  {"loaded (" + VIRTUAL_KEY[:12] + "…)" if VIRTUAL_KEY else "MISSING — edit .env"}')
 print(f'Proxy route      →  /proxy/v1/* → {UPSTREAM.rstrip("/")}/v1/*')
 print(f'Search proxy     →  /search?q=... → {SEARXNG_URL}')
-print(f'CodeSec scan     →  POST /codesec  {"(lacework CLI ready)" if LW_AVAILABLE else "(WARNING: lacework CLI not found)"}')
-print(f'SBOM export      →  POST /sbom     {"(lacework CLI ready)" if LW_AVAILABLE else "(WARNING: lacework CLI not found)"}')
+print(f'CodeSec scan     →  POST /codesec     {"(lacework CLI ready)" if LW_AVAILABLE else "(WARNING: lacework CLI not found)"}')
+print(f'SBOM export      →  POST /sbom        {"(lacework CLI ready)" if LW_AVAILABLE else "(WARNING: lacework CLI not found)"}')
+print(f'Compliance PDF   →  POST /compliance  {"(lacework CLI ready)" if LW_AVAILABLE else "(WARNING: lacework CLI not found)"}')
 
 with socketserver.TCPServer(('', PORT), Handler) as httpd:
     httpd.serve_forever()
