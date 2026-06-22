@@ -9,33 +9,33 @@
 :root {
   --mono: "SF Mono", "Fira Code", "Consolas", monospace;
 
-  /* dark */
-  --bg:       #1a1a1a;
-  --surface:  #242424;
-  --surface2: #2e2e2e;
-  --border:   #3a3a3a;
+  /* Fortinet dark theme */
+  --bg:       #141414;
+  --surface:  #1e1e1e;
+  --surface2: #282828;
+  --border:   #3a2020;
   --dim:      #6b6b6b;
-  --text:     #e8e8e8;
-  --muted:    #9a9a9a;
-  --accent:   #da7756;
-  --accent-d: #c0603e;
-  --ok:       #4a9e4a;
-  --err:      #c96060;
+  --text:     #f0f0f0;
+  --muted:    #999999;
+  --accent:   #ee3124;
+  --accent-d: #c41230;
+  --ok:       #3a9e5a;
+  --err:      #ff5a5a;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     --bg:       #ffffff;
-    --surface:  #f5f5f5;
-    --surface2: #ebebeb;
-    --border:   #d8d8d8;
-    --dim:      #8a8a8a;
-    --text:     #1a1a1a;
+    --surface:  #f7f7f7;
+    --surface2: #eeeeee;
+    --border:   #e0cccc;
+    --dim:      #999999;
+    --text:     #1d1d1b;
     --muted:    #555555;
-    --accent:   #c96440;
-    --accent-d: #a84e2e;
-    --ok:       #2e7d2e;
-    --err:      #b52a2a;
+    --accent:   #ee3124;
+    --accent-d: #c41230;
+    --ok:       #1e7a40;
+    --err:      #c41230;
   }
 }
 
@@ -151,7 +151,7 @@ body {
 #read-page:hover  { color: var(--accent); border-color: var(--accent); }
 #read-page.active { color: var(--ok);     border-color: var(--ok); }
 #tldr:hover       { color: var(--accent); border-color: var(--accent); }
-#codesec:hover    { color: #e07020;       border-color: #e07020; }
+#codesec:hover    { color: var(--accent);       border-color: var(--accent); }
 #codesec.busy     { color: var(--muted);  border-color: var(--border); cursor: wait; }
 #sbom:hover       { color: var(--accent); border-color: var(--accent); }
 #sbom.busy        { color: var(--muted);  border-color: var(--border); cursor: wait; }
@@ -163,7 +163,7 @@ body {
   display: none;
   flex-direction: column;
   background: var(--surface);
-  border-top: 2px solid #e07020;
+  border-top: 2px solid var(--accent);
   flex-shrink: 0;
   max-height: 280px;
   overflow-y: auto;
@@ -178,7 +178,7 @@ body {
   background: var(--surface2);
   border-bottom: 1px solid var(--border);
   font-weight: 700;
-  color: #e07020;
+  color: var(--accent);
   font-size: 11px;
   flex-shrink: 0;
 }
@@ -279,7 +279,7 @@ body {
 #comp-generate {
   font-family: var(--mono);
   font-size: 11px;
-  background: var(--ok);
+  background: var(--accent);
   color: #fff;
   border: none;
   padding: 4px 12px;
@@ -426,7 +426,7 @@ body {
 <body>
 
 <div id="toolbar">
-  <span class="brand">⚡ bifrost</span>
+  <span class="brand">🛡 FortiCNAPP</span>
   <label>url</label>
   <input id="url-input" type="url" placeholder="https://bifrost.xxx" autocomplete="off" />
   <label>key</label>
