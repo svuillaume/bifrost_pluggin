@@ -11,9 +11,10 @@ A minimal Chrome side-panel chat UI for the [Bifrost AI Gateway](https://bifrost
 
 ## Usage
 
-1. Paste your `sk-bf-…` virtual key into the **key** field
-2. Pick a model (haiku / sonnet / opus)
-3. Type a message and press **Enter** (Shift+Enter for newline)
+1. Paste the bifrost API Endpoint URL `https://bifrost.xxx`
+2. Paste your `sk-bf-…` virtual key into the **key** field
+3. Pick a default model (haiku / sonnet / opus)
+4. Type a message and press **Enter** (Shift+Enter for newline)
 
 The side panel stays open while you browse any page.
 
