@@ -17,7 +17,7 @@ import http.server, json, os, socketserver, urllib.parse, urllib.request, urllib
 PORT     = 8765
 DIR      = os.path.dirname(os.path.abspath(__file__))
 HTML_FILE = os.path.join(DIR, 'chatbox.html')
-UPSTREAM  = 'https://bifrost.fabriclab.ca/anthropic'
+UPSTREAM  = env.get('ANTHROPIC_BASE_URL', 'https://your-bifrost-endpoint/anthropic')
 
 def load_env():
     path = os.path.join(DIR, '.env')
@@ -148,7 +148,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 print(f'Bifrost chatbox  →  http://localhost:{PORT}')
 print(f'Virtual key      →  {"loaded (" + VIRTUAL_KEY[:12] + "…)" if VIRTUAL_KEY else "MISSING — edit .env"}')
-print(f'Proxy route      →  /proxy/v1/* → {UPSTREAM}/v1/*')
+print(f'Proxy route      →  /proxy/v1/* → {UPSTREAM.rstrip("/")}/v1/*')
 print(f'Search proxy     →  /search?q=... → {SEARXNG_URL}')
 
 with socketserver.TCPServer(('', PORT), Handler) as httpd:
