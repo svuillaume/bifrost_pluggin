@@ -1,6 +1,6 @@
 # Bifrost Chat — Chrome Extension
 
-A secure AI chat side panel for the [Bifrost AI Gateway](https://bifrost.fabriclab.ca).
+A secure AI chat side panel for the [Bifrost AI Gateway](https://bifrost.xxxx.ca).
 
 ---
 
