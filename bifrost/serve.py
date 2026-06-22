@@ -200,7 +200,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         tmpdir = tempfile.mkdtemp(prefix='bifrost-codesec-')
         try:
             self._write_files(tmpdir, payload)
-            filename = 'scan'  # used only for error display
+            # Collect submitted filenames for the response
+            files_list = payload.get('files')
+            if files_list:
+                submitted_files = [os.path.basename(e.get('filename', 'snippet.txt')) for e in files_list]
+            else:
+                submitted_files = [os.path.basename(payload.get('filename', 'snippet.txt'))]
+            filename = submitted_files[0] if len(submitted_files) == 1 else submitted_files
 
             out_json = os.path.join(tmpdir, 'sca.json')
             result   = subprocess.run(
@@ -216,20 +222,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with open(out_json) as f:
                     data = json.load(f)
 
-                # Build artifact id → name map
-                art_map = {a['Id']: a.get('Name', a.get('Path', ''))
+                # Build artifact id → {name, path} map
+                art_map = {a['Id']: {'name': a.get('Name', ''), 'path': a.get('Path', '')}
                            for a in data.get('Artifacts', [])}
 
                 # SCA vulnerabilities — top-level Vulnerabilities[]
                 for vuln in data.get('Vulnerabilities', []):
                     info = vuln.get('Info', {})
                     aid  = (vuln.get('AffectedArtifactIds') or [''])[0]
+                    art  = art_map.get(aid, {})
                     fv = info.get('FixVersion') or {}
                     findings.append({
                         'type':        'vuln',
                         'id':          info.get('ExternalId', ''),
                         'severity':    info.get('Severity', ''),
-                        'package':     art_map.get(aid, aid),
+                        'package':     art.get('name') or art.get('path') or aid,
+                        'file':        art.get('path', ''),
                         'fixVersion':  fv.get('Version', '') if isinstance(fv, dict) else str(fv),
                         'description': info.get('Description', ''),
                     })
