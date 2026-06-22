@@ -12,7 +12,7 @@ A Chrome browser extension that opens as a side panel and lets you chat with Cla
 - 💬 Chat with Claude (haiku / sonnet / opus) via your private gateway
 - 📄 **Read Web Page** — load any open tab into AI context and ask questions about it
 - 📋 **TL;DR** — one-click bullet-point summary of the current page
-- 🔍 **Web search** — live results via local SearXNG container (optional)
+- 🔍 **Web search** — real-time search / results  (optional)
 - 🔗 Clickable links in AI responses open in a new tab
 
 ---
