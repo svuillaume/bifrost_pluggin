@@ -1,7 +1,6 @@
 eks-cluster/
 lql/
 weather-mcp/
-samv-codesec-demo2025/
 .DS_Store
 .gitmodules
 .lacework/
@@ -13,5 +12,3 @@ cnapp.html
 demo.php
 forticnapp-azure-ciem.md
 forticnapp-azure-integration.skill
-june-2026-cloud-identity-attack-chains.html
-june-2026-cloud-identity-attack-chains.md
