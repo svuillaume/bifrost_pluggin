@@ -6,7 +6,7 @@ A Chrome side-panel extension that brings AI chat and FortiCNAPP cloud security 
 
 ## What it does
 
-- **AI chat** — streaming responses via any AI Gateway (Bifrost, Portkey, LiteLLM, Helicone)
+- **AI chat** — Instant Chat via any AI Gateway (Bifrost, Portkey, LiteLLM, Helicone)
 - **External Web Search** — Anthropic's native `web_search_20260209` server-side tool
 - **Web Page tools** — Read any open tab into context; TL;DR summaries
   
