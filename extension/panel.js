@@ -546,6 +546,16 @@ async function send(silent = false) {
       const node = document.createElement('span');
       setRendered(node, renderMarkdown(out));
       bubble.appendChild(node);
+      const copyBtn = Object.assign(document.createElement('button'), {
+        className: 'rc-copy-btn', textContent: '⎘ Copy', title: 'Copy response',
+      });
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(out);
+        copyBtn.textContent = '✓ Copied';
+        setTimeout(() => { copyBtn.textContent = '⎘ Copy'; }, 1500);
+      });
+      bubble.appendChild(copyBtn);
+      if (bubble._allBody) bubble._allBody.appendChild(copyBtn.cloneNode(true));
     }
     history.push({ role: 'assistant', content: out });
     setStatus('ok', 'ok');
