@@ -785,17 +785,31 @@ function renderCodeSecResults(data, mode, ghCtx, scannedFiles) {
           (sf.path || sf.filename || '').endsWith(f.file || '') ||
           (sf.filename || '') === base
         );
-        const codeBlock = fileEntry
-          ? `\`\`\`\n// ${fileEntry.path || fileEntry.filename}\n${fileEntry.code}\n\`\`\``
-          : '';
+        const isSast = f._cat !== 'SCA Vulnerabilities';
+        let codeBlock = '';
+        if (fileEntry) {
+          if (isSast && f.line) {
+            // SAST: extract a window of lines around the finding
+            const lines   = fileEntry.code.split('\n');
+            const lineIdx = f.line - 1;
+            const start   = Math.max(0, lineIdx - 3);
+            const end     = Math.min(lines.length, lineIdx + 4);
+            const snippet = lines.slice(start, end)
+              .map((l, i) => `${start + i + 1 === f.line ? '>' : ' '} ${start + i + 1}  ${l}`)
+              .join('\n');
+            codeBlock = `\`\`\`\n// ${fileEntry.path || fileEntry.filename} (lines ${start + 1}–${end})\n${snippet}\n\`\`\``;
+          } else if (!isSast) {
+            codeBlock = `\`\`\`\n// ${fileEntry.path || fileEntry.filename}\n${fileEntry.code}\n\`\`\``;
+          }
+        }
         const prompt =
           `Fix the following ${f._cat} finding using best practices.\n\n` +
           `**${rawDesc}**${idStr ? ` [${idStr}]` : ''}\n` +
           (locLabel ? `Location: \`${locLabel}\`\n` : '') +
           (fixStr   ? `Suggested fix version: ${fixStr}\n` : '') +
           (f.fix    ? `Remediation hint: ${f.fix}\n` : '') +
-          (codeBlock ? `\n${codeBlock}` : '\n(file content unavailable)') +
-          `\n\nProvide the corrected code only, with a brief explanation of what changed and why.`;
+          (codeBlock ? `\n${codeBlock}` : '') +
+          `\n\nProvide the corrected code snippet only, with a brief explanation of what changed and why.`;
 
         el('codesec-panel').classList.remove('open');
         el('prompt').value = prompt;
