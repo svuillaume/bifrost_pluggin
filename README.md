@@ -8,6 +8,23 @@ Works with **FortiCNAPP** (and any CNAPP platform built on Lacework).
 
 ---
 
+## Features
+
+| Feature | Description |
+|---|---|
+| 💬 **AI Chat** | General-purpose AI assistant with automatic web search for up-to-date information |
+| 📖 **Read Page** | Loads the current webpage into context so you can ask questions about it |
+| ⚡ **TL;DR** | Instant plain-English summary of any page |
+| 🚨 **FortiGuard Alerts** | Live outbreak alert feed from FortiGuard Labs — button flashes red when active threats are detected in the last 5 days |
+| 🛡 **Code Scanner** | Scans code on the current page or a GitHub repo for vulnerabilities, misconfigurations, and exposed secrets |
+| 📋 **Compliance Reports** | Generates compliance PDF reports (CIS, NIST, PCI-DSS, SOC 2, HIPAA, and 50+ frameworks) from your FortiCNAPP environment |
+| 📊 **Advanced Analytics (LQL)** | Run saved security queries against FortiCNAPP — or type what you want in plain English and the AI writes and executes the query automatically |
+| 🔬 **Attack Surface Analyzer** | Search any CVE ID and instantly see which hosts and containers in your environment are exposed, enriched with FortiGuard outbreak intelligence and a direct FortiGuard search link |
+| 🤖 **CISO-Level Reports** | Every AI response follows a consistent executive report template — findings, risk ratings, impacted resources table, MITRE ATT&CK mapping, and Quick Remediation CLI scripts |
+| 📋 **Copy Button** | One-click copy on every AI response |
+
+---
+
 ## What does it do?
 
 Think of it as a security analyst sitting next to you while you browse. You open a side panel in Chrome, and from there you can:
