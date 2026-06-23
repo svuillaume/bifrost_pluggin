@@ -576,7 +576,7 @@ async function fetchGithubRepoFiles(owner, repo) {
     }));
     files.push(...results.filter(Boolean));
   }
-  return files;
+  return { files, owner, repo, branch };
 }
 
 async function extractPageCode() {
@@ -588,11 +588,11 @@ async function extractPageCode() {
 
   const ghRepo = githubRepoFromUrl(tab.url || '');
   if (ghRepo) {
-    const files = await fetchGithubRepoFiles(ghRepo.owner, ghRepo.repo);
+    const { files, owner, repo, branch } = await fetchGithubRepoFiles(ghRepo.owner, ghRepo.repo);
     const fileList = files.map(f => `  • ${f.path || f.filename}`).join('\n');
     appendTurn('system',
-      `🔍 GitHub: ${ghRepo.owner}/${ghRepo.repo} — ${files.length} file${files.length !== 1 ? 's' : ''} fetched:\n${fileList}`);
-    return { files, title: tab.title || 'page', url: tab.url || '' };
+      `🔍 GitHub: ${owner}/${repo} — ${files.length} file${files.length !== 1 ? 's' : ''} fetched:\n${fileList}`);
+    return { files, title: tab.title || 'page', url: tab.url || '', ghCtx: { owner, repo, branch } };
   }
 
   // Fallback: scrape <pre> blocks from the rendered page
@@ -627,7 +627,7 @@ function severityOrder(s) {
   return { critical: 0, high: 1, medium: 2, low: 3, info: 4 }[s?.toLowerCase()] ?? 5;
 }
 
-function renderCodeSecResults(data, mode) {
+function renderCodeSecResults(data, mode, ghCtx) {
   const panel = el('codesec-panel');
   const body  = el('codesec-body');
   el('codesec-panel-title').textContent = mode === 'sbom' ? '📦 FortiCNAPP SBOM' : '🛡 FortiCNAPP CodeSec';
@@ -726,14 +726,22 @@ function renderCodeSecResults(data, mode) {
       const idStr   = f.id || '';
       // Truncate long CVE descriptions to first sentence / 120 chars
       const rawDesc = f.title || (f.description || '').split('\n')[0].slice(0, 120) || idStr;
-      const locStr  = f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : '';
+      const locLabel = f.file ? `${f.file}${f.line ? ':' + f.line : ''}` : '';
+      const locHtml  = (() => {
+        if (!locLabel) return '';
+        if (ghCtx && f.file) {
+          const href = `https://github.com/${ghCtx.owner}/${ghCtx.repo}/blob/${ghCtx.branch}/${f.file}${f.line ? '#L' + f.line : ''}`;
+          return `<span class="cs-sub"> <a class="ext-link" data-href="${href}">${esc(locLabel)}</a></span>`;
+        }
+        return `<span class="cs-sub"> ${esc(locLabel)}</span>`;
+      })();
       const fixStr  = f.fixVersion || '';
       row.innerHTML =
         `<div class="cs-sev ${esc(sev)}">${esc(sev)}</div>` +
         `<div class="cs-detail">${esc(rawDesc)}` +
-          (idStr   ? `<span class="cs-sub"> [${esc(idStr)}]</span>` : '') +
-          (locStr  ? `<span class="cs-sub"> ${esc(locStr)}</span>`  : '') +
-          (fixStr  ? `<span class="cs-sub"> → fix: ${esc(fixStr)}</span>` : '') +
+          (idStr    ? `<span class="cs-sub"> [${esc(idStr)}]</span>` : '') +
+          locHtml +
+          (fixStr   ? `<span class="cs-sub"> → fix: ${esc(fixStr)}</span>` : '') +
         `</div>`;
       body.appendChild(row);
     });
@@ -755,7 +763,7 @@ async function runCodeSec(mode) {
   setStatus(`${mode === 'sbom' ? 'generating SBOM' : 'scanning'}…`, 'busy');
 
   try {
-    const { files } = await extractPageCode();
+    const { files, ghCtx } = await extractPageCode();
     if (!files.length) {
       appendTurn('system', 'No code blocks found on this page.');
       setStatus('—');
@@ -769,7 +777,7 @@ async function runCodeSec(mode) {
     });
     if (!res.ok) throw new Error(`Scan endpoint returned ${res.status}`);
     const data = await res.json();
-    renderCodeSecResults(data, mode);
+    renderCodeSecResults(data, mode, ghCtx);
 
     if (mode !== 'sbom') {
       const total = (data.vulns?.length || 0) + (data.weaknesses?.length || 0) + (data.secrets?.length || 0);
