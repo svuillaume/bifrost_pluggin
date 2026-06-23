@@ -128,7 +128,7 @@ async function autoFillFromConfig() {
   fill(keyInput,  'api_key',     'bf_key');
   if (cfg.gateway_url || cfg.api_key) setStatus('config loaded', 'ok');
 
-  const lwReady = cfg.lw_ready === true;
+  const lwReady = cfg.lw_ready !== false;
   const LW_CHIPS = ['codesec', 'compliance', 'lql', 'cve-btn'];
   LW_CHIPS.forEach(id => {
     const btn = el(id);
@@ -140,6 +140,12 @@ async function autoFillFromConfig() {
       btn.classList.remove('lw-disabled');
     }
   });
+  const fcBtn = el('fcnapp-btn');
+  if (fcBtn) {
+    fcBtn.title = lwReady
+      ? 'FortiCNAPP tools'
+      : 'FortiCNAPP tools — ⚠ backend credentials not found (add ~/.lacework.toml)';
+  }
 }
 
 // ── Welcome message ───────────────────────────────────────────────────────────
@@ -398,6 +404,38 @@ async function send(silent = false) {
   }
 }
 
+// ── FortiCNAPP dropdown toggle ────────────────────────────────────────────────
+(function () {
+  const btn  = el('fcnapp-btn');
+  const menu = el('fcnapp-menu');
+  if (!btn || !menu) return;
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen = menu.classList.contains('open');
+    if (!isOpen) {
+      const r = btn.getBoundingClientRect();
+      menu.style.top  = `${r.bottom + 4}px`;
+      menu.style.left = `${r.left}px`;
+    }
+    menu.classList.toggle('open', !isOpen);
+    btn.classList.toggle('open', !isOpen);
+  });
+
+  // clicking a menu item closes the dropdown
+  menu.addEventListener('click', () => {
+    menu.classList.remove('open');
+    btn.classList.remove('open');
+  });
+
+  document.addEventListener('click', e => {
+    if (!btn.contains(e.target) && !menu.contains(e.target)) {
+      menu.classList.remove('open');
+      btn.classList.remove('open');
+    }
+  });
+})();
+
 // Open links in a new tab — target="_blank" is blocked in MV3 side panels
 el('log').addEventListener('click', e => {
   const a = e.target.closest('a.ext-link');
@@ -544,6 +582,9 @@ async function fetchGithubRepoFiles(owner, repo) {
 async function extractPageCode() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('No active tab');
+  const url = tab.url || '';
+  if (/^(chrome|chrome-extension|about|edge):\/\//i.test(url))
+    throw new Error(`Cannot scan a browser page (${url.split('://')[0]}://). Navigate to a real webpage first.`);
 
   const ghRepo = githubRepoFromUrl(tab.url || '');
   if (ghRepo) {

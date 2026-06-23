@@ -193,6 +193,47 @@ body {
 #clear                { margin-left: auto; }
 #clear:hover          { color: var(--err);     background: var(--err-bg);   border-color: rgba(248,113,113,.3); }
 
+/* ── FortiCNAPP dropdown ─────────────────────────────────────────────────── */
+#fcnapp-wrap { position: relative; flex-shrink: 0; }
+#fcnapp-btn  { gap: 5px; }
+#fcnapp-btn .caret { font-size: 8px; opacity: .6; transition: transform .15s; }
+#fcnapp-btn.open .caret { transform: rotate(180deg); }
+#fcnapp-menu {
+  display: none;
+  position: fixed;
+  z-index: 200;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 150px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.35);
+}
+#fcnapp-menu.open { display: flex; flex-direction: column; gap: 2px; }
+.fcnapp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  white-space: nowrap;
+  width: 100%;
+  text-align: left;
+  transition: background .1s, color .1s;
+}
+.fcnapp-item:hover        { background: var(--surface3); }
+.fcnapp-item.lw-disabled  { opacity: .35; cursor: not-allowed; filter: grayscale(1); pointer-events: none; }
+.fcnapp-item.accent:hover { color: var(--accent); background: var(--accent-bg); }
+.fcnapp-item.success:hover{ color: var(--ok);     background: var(--ok-bg); }
+.fcnapp-item.danger:hover { color: var(--err);    background: var(--err-bg); }
+
 /* ── Drawers (shared) ────────────────────────────────────────────────────── */
 .drawer {
   display: none;
@@ -716,9 +757,9 @@ body {
     <option value="litellm">LiteLLM</option>
     <option value="helicone">Helicone</option>
   </select>
-  <label>url</label>
+  <label for="url-input">url</label>
   <input id="url-input" type="url" placeholder="https://bifrost.xxx" autocomplete="off" />
-  <label id="key-label">key</label>
+  <label id="key-label" for="key-input">key</label>
   <input id="key-input" type="password" placeholder="sk-bf-…" autocomplete="off" />
   <input id="key2-input" type="hidden" />
   <span id="search-dot" style="display:none"></span>
@@ -737,11 +778,16 @@ body {
   <button id="read-page" class="chip"         title="Read current page into context">📄 Read</button>
   <button id="tldr"      class="chip"         title="Summarize current page">TL;DR</button>
   <div class="sep"></div>
-  <button id="codesec"    class="chip accent"  title="🔑 Requires FortiCNAPP API key — SCA + SAST scan on code found on this page">🛡 Scan</button>
-  <button id="sbom"       class="chip accent"  title="🔑 Requires FortiCNAPP API key — SBOM export" disabled style="display:none">📦 SBOM</button>
-  <button id="compliance" class="chip success" title="🔑 Requires FortiCNAPP API key — Generate compliance PDF report">📋 Compliance</button>
-  <button id="lql"        class="chip accent"  title="🔑 Requires FortiCNAPP API key — Run LQL queries against your tenant">🔍 LQL</button>
-  <button id="cve-btn"    class="chip danger"  title="🔑 Requires FortiCNAPP API key — CVE attack surface across hosts &amp; containers">🚨 CVE</button>
+  <div id="fcnapp-wrap">
+    <button id="fcnapp-btn" class="chip accent" title="FortiCNAPP tools">🔰 FortiCNAPP <span class="caret">▼</span></button>
+    <div id="fcnapp-menu">
+      <button id="codesec"    class="fcnapp-item accent"  title="SCA + SAST scan on code found on this page">🛡 Scan</button>
+      <button id="sbom"       class="fcnapp-item accent"  title="SBOM export" style="display:none">📦 SBOM</button>
+      <button id="compliance" class="fcnapp-item success" title="Generate compliance PDF report">📋 Compliance</button>
+      <button id="lql"        class="fcnapp-item accent"  title="Run LQL queries against your tenant">🔍 LQL</button>
+      <button id="cve-btn"    class="fcnapp-item danger"  title="CVE attack surface across hosts &amp; containers">🚨 CVE</button>
+    </div>
+  </div>
   <button id="clear"      class="chip">✕ Clear</button>
 </div>
 

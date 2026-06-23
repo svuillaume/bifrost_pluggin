@@ -204,13 +204,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             filename = submitted_files[0] if len(submitted_files) == 1 else submitted_files
 
             out_json = os.path.join(tmpdir, 'sca.json')
-            result   = subprocess.run(
-                ['lacework', 'sca', 'scan', tmpdir,
-                 '--deployment=offprem', '--noninteractive',
-                 '--save-results=false', '-f', 'lw-json', '-o', out_json,
-                 '--secret=false'],   # skip secretsAll cloud query (times out)
-                capture_output=True, text=True, timeout=120,
-            )
+            cmd = ['lacework', 'sca', 'scan', tmpdir,
+                   '--deployment=offprem', '--noninteractive',
+                   '--save-results=false', '-f', 'lw-json', '-o', out_json,
+                   '--secret=false']   # skip secretsAll cloud query (times out)
+            if LW_PROFILE:
+                cmd += ['--profile', LW_PROFILE]
+            result   = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
             findings, weaknesses, secrets = [], [], []
             if os.path.exists(out_json):
@@ -287,12 +287,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._write_files(tmpdir, payload)
 
             out_json = os.path.join(tmpdir, 'sbom.json')
-            result   = subprocess.run(
-                ['lacework', 'sca', 'scan', tmpdir,
-                 '--deployment=offprem', '--noninteractive',
-                 '--save-results=false', '-f', 'cyclonedx-json', '-o', out_json],
-                capture_output=True, text=True, timeout=120,
-            )
+            cmd = ['lacework', 'sca', 'scan', tmpdir,
+                   '--deployment=offprem', '--noninteractive',
+                   '--save-results=false', '-f', 'cyclonedx-json', '-o', out_json]
+            if LW_PROFILE:
+                cmd += ['--profile', LW_PROFILE]
+            result   = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
             if os.path.exists(out_json):
                 with open(out_json) as f:
@@ -1028,12 +1028,12 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no explan
         # Prefer lacework CLI — it resolves provider/evaluator automatically
         if shutil.which('lacework'):
             try:
-                result = subprocess.run(
-                    ['lacework', 'query', 'execute',
-                     '--query-text', query_text,
-                     '--start', start, '--end', end, '--json'],
-                    capture_output=True, text=True, timeout=60,
-                )
+                cmd = ['lacework', 'query', 'execute',
+                       '--query-text', query_text,
+                       '--start', start, '--end', end, '--json']
+                if LW_PROFILE:
+                    cmd += ['--profile', LW_PROFILE]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                 if result.returncode == 0 and result.stdout.strip():
                     raw = json.loads(result.stdout)
                     rows = raw.get('data', raw) if isinstance(raw, dict) else raw
@@ -1104,22 +1104,31 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no explan
 LW_AVAILABLE = shutil.which('lacework') is not None
 
 def _lw_creds_present():
+    """Return (ready: bool, profile: str). profile is '' for [default]."""
     toml_path = os.path.expanduser('~/.lacework.toml')
     if not os.path.exists(toml_path):
-        return False
-    account = api_key = api_secret = ''
+        return False, ''
+    profile = account = api_key = api_secret = ''
+    first_section = ''
     with open(toml_path) as f:
         for line in f:
             line = line.strip()
-            if line.startswith('account'):
+            if line.startswith('[') and line.endswith(']'):
+                profile = line[1:-1]
+                if not first_section:
+                    first_section = profile
+            elif line.startswith('account'):
                 account    = line.split('=',1)[1].strip().strip('"')
             elif line.startswith('api_key'):
                 api_key    = line.split('=',1)[1].strip().strip('"')
             elif line.startswith('api_secret'):
                 api_secret = line.split('=',1)[1].strip().strip('"')
-    return bool(account and api_key and api_secret)
+    ready = bool(account and api_key and api_secret)
+    # Use '' (no --profile flag) only if the section is literally 'default'
+    lw_profile = '' if first_section == 'default' else first_section
+    return ready, lw_profile
 
-LW_READY = _lw_creds_present()
+LW_READY, LW_PROFILE = _lw_creds_present()
 
 lw_status = 'ready' if LW_AVAILABLE else 'WARNING: lacework CLI not found'
 print(f'Web AI Agent  →  http://localhost:{PORT}')

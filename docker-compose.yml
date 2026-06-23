@@ -1,6 +1,9 @@
 services:
   webai:
-    build: .
+    build:
+      context: .
+      secrets:
+        - lacework_toml
     container_name: webai-serve
     ports:
       - "8765:8765"
@@ -8,6 +11,9 @@ services:
       - .env
     volumes:
       - ~/.lacework.toml:/root/.lacework.toml:ro
-      - ~/.config/lacework:/root/.config/lacework
       - ~/claude_cnapp/lql/lql_queries:/lql_queries:ro
     restart: unless-stopped
+
+secrets:
+  lacework_toml:
+    file: ~/.lacework.toml
