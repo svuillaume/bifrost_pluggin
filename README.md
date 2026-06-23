@@ -1,3 +1,5 @@
+# BETA Project - New Features welcome - New Integrations to come ...
+
 # Web AI Agent — Chrome Extension 
 
 I am your Web AI Security Agent integrating with your best AI Gateway platfrom (LLMlite, Portkey, Helicone, ...) built into Chrome and powered by FortiCNAPP for real-time code scanning and cloud security insights.
