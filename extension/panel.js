@@ -222,13 +222,20 @@ function renderMarkdown(text) {
 }
 
 function setRendered(node, html) {
+  // Preserve the copy button across replaceChildren
+  const copyBtn  = node._copyBtn  || null;
+  const copyBtn2 = node._allBody?._copyBtn || null;
+
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   node.replaceChildren(tpl.content.cloneNode(true));
+  if (copyBtn) node.appendChild(copyBtn);
+
   if (node._allBody) {
     const tpl2 = document.createElement('template');
     tpl2.innerHTML = html;
     node._allBody.replaceChildren(tpl2.content.cloneNode(true));
+    if (copyBtn2) node._allBody.appendChild(copyBtn2);
   }
 }
 
@@ -322,8 +329,10 @@ function appendTurn(role, text = '') {
     };
 
     const copyBtn      = makeCopyBtn(body);
+    body._copyBtn      = copyBtn;
     const bodyClone    = Object.assign(document.createElement('div'), { className: 'content' });
     const copyBtnClone = makeCopyBtn(bodyClone);
+    bodyClone._copyBtn = copyBtnClone;
     const colClone     = Object.assign(document.createElement('div'), { className: 'bubble-col' });
     const lblClone     = Object.assign(document.createElement('div'), { className: 'turn-label', textContent: 'Web AI Agent' });
     const avatarClone  = Object.assign(document.createElement('div'), { className: 'role ai', textContent: 'AI' });
