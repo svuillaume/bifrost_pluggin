@@ -617,6 +617,41 @@ async function fetchGithubRepoFiles(owner, repo) {
   return { files, owner, repo, branch };
 }
 
+function appendGithubCard(owner, repo, branch, files) {
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const repoUrl = `https://github.com/${owner}/${repo}`;
+
+  // Group files by directory
+  const groups = {};
+  files.forEach(f => {
+    const parts = (f.path || f.filename || '').split('/');
+    const dir   = parts.length > 1 ? parts.slice(0, -1).join('/') : '(root)';
+    (groups[dir] = groups[dir] || []).push(parts[parts.length - 1]);
+  });
+
+  const rows = Object.entries(groups).map(([dir, fnames]) => {
+    const dirLabel = dir === '(root)' ? '' : `<span class="gh-dir">${esc(dir)}/</span>`;
+    const fileChips = fnames.map(n =>
+      `<span class="gh-file">${esc(n)}</span>`
+    ).join('');
+    return `<div class="gh-row">${dirLabel}${fileChips}</div>`;
+  }).join('');
+
+  const card = document.createElement('div');
+  card.className = 'gh-card';
+  card.innerHTML =
+    `<div class="gh-header">` +
+      `<span class="gh-icon">⬡</span>` +
+      `<a class="ext-link gh-repo" data-href="${repoUrl}">${esc(owner)}/<strong>${esc(repo)}</strong></a>` +
+      `<span class="gh-branch">⎇ ${esc(branch)}</span>` +
+      `<span class="gh-count">${files.length} file${files.length !== 1 ? 's' : ''}</span>` +
+    `</div>` +
+    `<div class="gh-files">${rows}</div>`;
+
+  el('log').appendChild(card);
+  scrollLog();
+}
+
 async function extractPageCode() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error('No active tab');
@@ -634,9 +669,7 @@ async function extractPageCode() {
       const base = f.path.split('/').pop();
       (pathMap[base] = pathMap[base] || []).push(f.path);
     });
-    const fileList = files.map(f => `  • ${f.path || f.filename}`).join('\n');
-    appendTurn('system',
-      `🔍 GitHub: ${owner}/${repo} — ${files.length} file${files.length !== 1 ? 's' : ''} fetched:\n${fileList}`);
+    appendGithubCard(owner, repo, branch, files);
     return { files, title: tab.title || 'page', url: tab.url || '', ghCtx: { owner, repo, branch, pathMap } };
   }
 

@@ -725,6 +725,84 @@ a.ext-link {
 }
 a.ext-link:hover { color: var(--accent-d); }
 
+/* ── GitHub scan card ────────────────────────────────────────────────────── */
+.gh-card {
+  margin: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface2);
+  font-size: 11px;
+  animation: fadein .15s ease;
+}
+.gh-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  background: var(--surface3);
+  border-bottom: 1px solid var(--border);
+}
+.gh-icon { font-size: 13px; color: var(--accent); flex-shrink: 0; }
+.gh-repo {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  flex: 1;
+}
+.gh-repo strong { color: var(--accent); font-weight: 700; }
+.gh-repo:hover  { color: var(--accent); }
+.gh-branch {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.gh-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.gh-files {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.gh-files::-webkit-scrollbar { width: 3px; }
+.gh-files::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+.gh-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+.gh-dir {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  margin-right: 1px;
+}
+.gh-file {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
 .cursor {
   display: inline-block;
   width: 2px; height: 14px;
