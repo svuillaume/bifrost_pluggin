@@ -310,21 +310,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _lw_token(self):
-        """Obtain a short-lived Bearer token from ~/.lacework.toml credentials."""
-        toml_path = os.path.expanduser('~/.lacework.toml')
-        account = api_key = api_secret = ''
-        if os.path.exists(toml_path):
-            with open(toml_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith('account'):
-                        account    = line.split('=',1)[1].strip().strip('"')
-                    elif line.startswith('api_key'):
-                        api_key    = line.split('=',1)[1].strip().strip('"')
-                    elif line.startswith('api_secret'):
-                        api_secret = line.split('=',1)[1].strip().strip('"')
+        """Obtain a short-lived Bearer token. Reads ~/.lacework.toml, falls back to env vars."""
+        account, api_key, api_secret = _lw_creds()
         if not (account and api_key and api_secret):
-            raise ValueError('lacework credentials not found in ~/.lacework.toml')
+            raise ValueError(
+                'FortiCNAPP credentials not found. Set LW_ACCOUNT / LW_API_KEY / LW_API_SECRET '
+                'env vars, or run: lacework configure')
         base_url = f'https://{account}.lacework.net'
         body = json.dumps({'keyId': api_key, 'expiryTime': 3600}).encode()
         req = urllib.request.Request(
@@ -1104,32 +1095,47 @@ Respond with ONLY a valid JSON object — no markdown, no code fences, no explan
 
 LW_AVAILABLE = shutil.which('lacework') is not None
 
-def _lw_creds_present():
-    """Return (ready: bool, profile: str). profile is '' for [default]."""
+def _lw_creds():
+    """Return (account, api_key, api_secret) from env vars or ~/.lacework.toml (first section)."""
+    # Env vars take precedence — useful for CI/PoV without a toml file
+    account    = env.get('LW_ACCOUNT', '')
+    api_key    = env.get('LW_API_KEY', '')
+    api_secret = env.get('LW_API_SECRET', '')
+    if account and api_key and api_secret:
+        return account, api_key, api_secret
+    # Fall back to ~/.lacework.toml
     toml_path = os.path.expanduser('~/.lacework.toml')
     if not os.path.exists(toml_path):
-        return False, ''
-    profile = account = api_key = api_secret = ''
-    first_section = ''
-    with open(toml_path) as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith('[') and line.endswith(']'):
-                profile = line[1:-1]
-                if not first_section:
-                    first_section = profile
-            elif line.startswith('account'):
-                account    = line.split('=',1)[1].strip().strip('"')
-            elif line.startswith('api_key'):
-                api_key    = line.split('=',1)[1].strip().strip('"')
-            elif line.startswith('api_secret'):
-                api_secret = line.split('=',1)[1].strip().strip('"')
-    ready = bool(account and api_key and api_secret)
-    # Use '' (no --profile flag) only if the section is literally 'default'
-    lw_profile = '' if first_section == 'default' else first_section
-    return ready, lw_profile
+        return '', '', ''
+    for line in open(toml_path):
+        line = line.strip()
+        if line.startswith('account')    and not account:
+            account    = line.split('=',1)[1].strip().strip('"')
+        elif line.startswith('api_key')   and not api_key:
+            api_key    = line.split('=',1)[1].strip().strip('"')
+        elif line.startswith('api_secret') and not api_secret:
+            api_secret = line.split('=',1)[1].strip().strip('"')
+    return account, api_key, api_secret
 
-LW_READY, LW_PROFILE = _lw_creds_present()
+def _lw_profile():
+    """Return --profile value for lacework CLI ('' = default section)."""
+    # Env vars → no profile flag needed
+    if env.get('LW_ACCOUNT') and env.get('LW_API_KEY') and env.get('LW_API_SECRET'):
+        return ''
+    toml_path = os.path.expanduser('~/.lacework.toml')
+    if not os.path.exists(toml_path):
+        return ''
+    first_section = ''
+    for line in open(toml_path):
+        line = line.strip()
+        if line.startswith('[') and line.endswith(']'):
+            first_section = line[1:-1]
+            break
+    return '' if first_section == 'default' else first_section
+
+LW_PROFILE = _lw_profile()
+account, api_key, api_secret = _lw_creds()
+LW_READY = bool(account and api_key and api_secret)
 
 lw_status = 'ready' if LW_AVAILABLE else 'WARNING: lacework CLI not found'
 print(f'Web AI Agent  →  http://localhost:{PORT}')

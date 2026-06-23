@@ -28,52 +28,72 @@ Buttons grey out automatically when their dependency is missing — the tooltip 
 ## Requirements
 
 - Google Chrome
+- Python 3.8+
 - AI Gateway URL + key (Bifrost, Portkey, LiteLLM, or Helicone)
-- Python 3.8+ **or** Docker Desktop
-- `~/.lacework.toml` — for LQL, CVE, and Compliance _(run `lacework configure`)_
-- `lacework` CLI — for CodeSec/SBOM scanning only _(install below)_
+- `~/.lacework.toml` — for LQL, CVE, Compliance _(run `lacework configure`)_
+- `lacework` CLI — for CodeSec/SBOM only _(setup.sh can install it)_
+
+No Docker required.
 
 ---
 
 ## Quick start
 
+**macOS / Linux:**
 ```bash
 ./setup.sh
 ```
 
-The script:
-1. Creates `.env` from template — prompts for gateway URL and key
-2. Checks for lacework CLI and `~/.lacework.toml`; prints install instructions if missing
-3. Starts Docker if available, falls back to `python3 serve.py`
+**Windows (PowerShell):**
+```powershell
+.\setup.ps1
+```
 
-On Windows: `setup.ps1`
+Both scripts:
+1. Create `.env` from template — prompt for gateway URL and key
+2. Check for the lacework CLI; offer to install it if missing
+3. Check for `~/.lacework.toml`; offer to run `lacework configure` if missing
+4. Start `python3 serve.py` in the background on `localhost:8765`
 
 ---
 
 ## Manual start
 
-`serve.py` runs **locally on the same machine as Chrome** — it listens on `localhost:8765` and the extension talks to it via `fetch`. Nothing is exposed outside the machine.
+`serve.py` runs **locally on the same machine as Chrome** — it listens on `localhost:8765` and the extension connects to it via `fetch`. Nothing is exposed outside the machine.
 
-**Python (recommended on macOS — no extra installs):**
 ```bash
 cp .env.tpl .env        # fill in ANTHROPIC_BASE_URL and BIFROST_VIRTUAL_KEY
 python3 serve.py        # http://localhost:8765
 ```
 
-**Docker (recommended for Windows or shared/endpoint deployments):**
-```bash
-cp .env.tpl .env        # fill in ANTHROPIC_BASE_URL and BIFROST_VIRTUAL_KEY
-docker compose up -d    # builds image with lacework CLI + SCA component baked in
-```
-
 ---
 
-## Install the lacework CLI (for CodeSec/SBOM)
+## FortiCNAPP credentials
 
+**Option 1 — `lacework configure` (interactive, writes `~/.lacework.toml`):**
 ```bash
 curl -sL https://raw.githubusercontent.com/lacework/go-sdk/main/cli/install.sh | bash
-lacework configure      # enter account, API key, API secret
+lacework configure      # prompts for account, API key, API secret
 ```
+`setup.sh` / `setup.ps1` offer to run both steps automatically.
+
+**Option 2 — env vars (no toml, good for PoV/CI):**
+
+Add to `.env` (copy from `.env.tpl`):
+```
+LW_ACCOUNT=your-account
+LW_API_KEY=your-api-key
+LW_API_SECRET=your-api-secret
+```
+Or export before running:
+```bash
+export LW_ACCOUNT=your-account LW_API_KEY=your-api-key LW_API_SECRET=your-api-secret
+python3 serve.py
+```
+LQL, CVE, and Compliance work immediately — no CLI or toml file required.
+
+> **CodeSec / SBOM** still require the `lacework` CLI binary for local SCA scanning.  
+> **Windows:** `setup.ps1` downloads `lacework.exe` automatically.
 
 ---
 

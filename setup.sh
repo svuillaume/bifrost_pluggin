@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Web AI Agent — setup script
+# Web AI Agent — setup script (macOS / Linux)
+# Runs serve.py directly — no Docker required.
 
 set -euo pipefail
 
@@ -10,21 +11,20 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC
 info()   { echo -e "${GREEN}▶${NC} $*"; }
 warn()   { echo -e "${YELLOW}⚠${NC}  $*"; }
 error()  { echo -e "${RED}✗${NC} $*"; exit 1; }
-prompt() { echo -e "${CYAN}?${NC}  $*"; }
+ask()    { echo -e "${CYAN}?${NC}  $*"; }
 
 echo ""
 echo "  🌐 Web AI Agent — Setup"
 echo "  ──────────────────────────"
 echo ""
 
-# ── Step 1: .env — read or create ────────────────────────────────────────────
-load_env() {
-  if [ -f .env ]; then
-    # shellcheck disable=SC2046
-    export $(grep -v '^\s*#' .env | grep '=' | xargs) 2>/dev/null || true
-  fi
-}
+# ── Python check ──────────────────────────────────────────────────────────────
+if ! command -v python3 >/dev/null 2>&1; then
+  error "Python 3 not found. Install it from https://python.org and re-run this script."
+fi
+info "Python $(python3 --version 2>&1 | cut -d' ' -f2) found"
 
+# ── Step 1: .env ──────────────────────────────────────────────────────────────
 write_env_key() {
   local key="$1" value="$2"
   if grep -q "^${key}=" .env 2>/dev/null; then
@@ -34,99 +34,122 @@ write_env_key() {
   fi
 }
 
+load_env() {
+  if [ -f .env ]; then
+    # shellcheck disable=SC2046
+    export $(grep -v '^\s*#' .env | grep '=' | xargs) 2>/dev/null || true
+  fi
+}
+
 if [ ! -f .env ]; then
   warn ".env not found — creating from template"
   cp .env.tpl .env
 fi
 load_env
 
+echo ""
 if [ -z "${ANTHROPIC_BASE_URL:-}" ]; then
-  prompt "Enter your AI Gateway base URL (e.g. https://your-gateway.example.com/anthropic):"
+  ask "AI Gateway base URL (e.g. https://your-gateway.example.com/anthropic):"
   read -rp "  ANTHROPIC_BASE_URL: " val
   [ -n "$val" ] && write_env_key "ANTHROPIC_BASE_URL" "$val" && ANTHROPIC_BASE_URL="$val"
 else
-  info "ANTHROPIC_BASE_URL detected: ${ANTHROPIC_BASE_URL}"
+  info "ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL}"
 fi
 
 if [ -z "${BIFROST_VIRTUAL_KEY:-}" ]; then
-  prompt "Enter your virtual key (sk-bf-…):"
+  ask "Gateway virtual key (sk-bf-…):"
   read -rp "  BIFROST_VIRTUAL_KEY: " val
   [ -n "$val" ] && write_env_key "BIFROST_VIRTUAL_KEY" "$val" && BIFROST_VIRTUAL_KEY="$val"
 else
-  info "BIFROST_VIRTUAL_KEY detected: ${BIFROST_VIRTUAL_KEY:0:12}…"
+  info "BIFROST_VIRTUAL_KEY: ${BIFROST_VIRTUAL_KEY:0:12}…"
 fi
 
-# ── Step 2: extension config ──────────────────────────────────────────────────
+# ── Step 2: extension offline config ──────────────────────────────────────────
 if [ ! -f extension/config.json ]; then
   cp extension/config.json.tpl extension/config.json
 fi
 
-# ── Step 2b: lacework CLI + credentials check ────────────────────────────────
+# ── Step 3: lacework CLI ───────────────────────────────────────────────────────
 echo ""
-info "Checking FortiCNAPP / lacework prerequisites..."
+info "Checking FortiCNAPP prerequisites..."
 
 LW_CLI_OK=false
 LW_TOML_OK=false
 
 if command -v lacework >/dev/null 2>&1; then
-  info "lacework CLI found ($(lacework version 2>/dev/null | head -1))"
+  info "lacework CLI found — $(lacework version 2>/dev/null | head -1)"
   LW_CLI_OK=true
 else
   warn "lacework CLI not found — CodeSec and SBOM scanning will be unavailable."
-  echo "    Install it with:"
-  echo "      curl -sL https://raw.githubusercontent.com/lacework/go-sdk/main/cli/install.sh | bash"
-  echo "    Then run:  lacework configure"
+  echo ""
+  ask "Install the lacework CLI now? [y/N]"
+  read -rp "  " install_lw
+  if [[ "${install_lw,,}" == "y" ]]; then
+    info "Installing lacework CLI..."
+    curl -sL https://raw.githubusercontent.com/lacework/go-sdk/main/cli/install.sh | bash
+    if command -v lacework >/dev/null 2>&1; then
+      info "lacework CLI installed — $(lacework version 2>/dev/null | head -1)"
+      LW_CLI_OK=true
+    else
+      warn "Install failed. Add lacework to your PATH and re-run, or install manually:"
+      echo "    https://docs.lacework.net/cli"
+    fi
+  fi
 fi
 
+# ── Step 4: lacework credentials ──────────────────────────────────────────────
 TOML="${HOME}/.lacework.toml"
 if [ -f "$TOML" ] && grep -q 'api_key' "$TOML" && grep -q 'api_secret' "$TOML"; then
   ACCOUNT=$(grep 'account' "$TOML" | head -1 | cut -d= -f2 | tr -d ' "')
-  info "lacework credentials found (~/.lacework.toml, account: ${ACCOUNT})"
+  info "FortiCNAPP credentials found (account: ${ACCOUNT})"
   LW_TOML_OK=true
 else
   warn "~/.lacework.toml not found or incomplete — LQL, CVE, and Compliance will be unavailable."
-  echo "    Run:  lacework configure"
-  echo "    (You need your FortiCNAPP account name + API key/secret)"
+  if [ "$LW_CLI_OK" = true ]; then
+    echo ""
+    ask "Configure FortiCNAPP credentials now? [y/N]"
+    read -rp "  " cfg_lw
+    if [[ "${cfg_lw,,}" == "y" ]]; then
+      lacework configure
+      if [ -f "$TOML" ] && grep -q 'api_key' "$TOML"; then
+        info "Credentials saved to ~/.lacework.toml"
+        LW_TOML_OK=true
+      fi
+    fi
+  else
+    echo "    Once the CLI is installed, run:  lacework configure"
+  fi
 fi
 
 if [ "$LW_CLI_OK" = false ] && [ "$LW_TOML_OK" = false ]; then
   echo ""
-  warn "No FortiCNAPP integration available. Web AI Agent will run in chat-only mode."
+  warn "Running in chat-only mode — FortiCNAPP security tools unavailable."
 fi
 
-# ── Step 3: start Web AI Agent ────────────────────────────────────────────────
+# ── Step 5: start serve.py ─────────────────────────────────────────────────────
 echo ""
-info "Checking Docker runtime..."
+info "Starting Web AI Agent (python3 serve.py)..."
+nohup python3 serve.py > serve.log 2>&1 &
+echo $! > .serve.pid
 
-if docker info >/dev/null 2>&1; then
-  info "Docker is running — building and starting Web AI Agent container..."
-  docker compose up -d --build webai
-
-  echo -n "  Waiting for Web AI Agent"
-  for i in $(seq 1 20); do
-    if curl -s "http://localhost:8765/config" >/dev/null 2>&1; then
-      echo " ✓"
-      break
-    fi
-    echo -n "."
-    sleep 1
-  done
-else
-  warn "Docker is not running — falling back to Python"
-  if ! command -v python3 >/dev/null 2>&1; then
-    error "Python 3 not found. Install Python 3 or start Docker Desktop."
+echo -n "  Waiting for server"
+for i in $(seq 1 20); do
+  if curl -s "http://localhost:8765/config" >/dev/null 2>&1; then
+    echo " ✓"
+    break
   fi
-  info "Starting serve.py..."
-  python3 serve.py &
+  echo -n "."
   sleep 1
-fi
+done
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "  ${GREEN}✔ Web AI Agent ready!${NC}"
 echo ""
 echo "  Chatbox  →  http://localhost:8765"
+echo "  Log      →  ./serve.log   (tail -f serve.log)"
+echo "  Stop     →  kill \$(cat .serve.pid)"
 echo ""
-echo "  Load the extension:"
+echo "  Load the Chrome extension:"
 echo "    chrome://extensions → Developer mode → Load unpacked → select extension/"
 echo ""
