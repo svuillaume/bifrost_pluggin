@@ -55,6 +55,60 @@ CORS = {
 # LQL generation cache: normalized_objective → {queryId, queryText, rows, count, total}
 _lql_cache: dict = {}
 
+# FortiGuard outbreak RSS cache: refreshed every 30 minutes
+_fg_cache: dict = {'items': [], 'ts': 0.0}
+
+def _fg_outbreaks_cached():
+    """Fetch and parse FortiGuard outbreak RSS, cache for 30 min. Returns list of items."""
+    import re as _re
+    import xml.etree.ElementTree as _et
+    from email.utils import parsedate_to_datetime
+
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _fg_cache['ts'] < 1800 and _fg_cache['items']:
+        return _fg_cache['items']
+
+    try:
+        import urllib.request as _ur
+        req = _ur.Request(
+            'https://www.fortiguard.com/rss/outbreakalert.xml',
+            headers={'User-Agent': 'Mozilla/5.0 WebAIAgent/1.0'},
+        )
+        with _ur.urlopen(req, timeout=10) as r:
+            xml_bytes = r.read()
+        root  = _et.fromstring(xml_bytes)
+        items = []
+        for item in root.findall('.//item'):
+            title   = (item.findtext('title')       or '').strip()
+            link    = (item.findtext('link')         or '').strip()
+            desc    = (item.findtext('description')  or '').strip()
+            pub_raw = (item.findtext('pubDate')      or '').strip()
+            try:
+                pub_iso = parsedate_to_datetime(pub_raw).isoformat()
+            except Exception:
+                pub_iso = ''
+            # Extract all CVE IDs mentioned in title + description
+            cves = list(dict.fromkeys(
+                _re.findall(r'CVE-\d{4}-\d+', title + ' ' + desc, _re.IGNORECASE)
+            ))
+            cves = [c.upper() for c in cves]
+            # Extract risk/severity hint (Critical, High, Medium, Low)
+            risk_m = _re.search(r'\b(Critical|High|Medium|Low)\b', title + ' ' + desc, _re.IGNORECASE)
+            risk   = risk_m.group(1).capitalize() if risk_m else ''
+            items.append({
+                'title':   title,
+                'link':    link,
+                'pubDate': pub_iso,
+                'summary': desc[:400] if desc else '',
+                'cves':    cves,
+                'risk':    risk,
+            })
+        _fg_cache['items'] = items
+        _fg_cache['ts']    = now
+        return items
+    except Exception:
+        return _fg_cache['items']  # return stale on error
+
 
 class Handler(http.server.BaseHTTPRequestHandler):
 
@@ -100,6 +154,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.serve_lql_queries()
         elif self.path == '/fortiguard/outbreaks':
             self.serve_fortiguard_outbreaks()
+        elif self.path.startswith('/fortiguard/outbreak-by-cve'):
+            self.serve_outbreak_by_cve()
         else:
             self.send_error(404)
 
@@ -717,31 +773,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_json(200, json.dumps({'queries': queries}).encode())
 
     def serve_fortiguard_outbreaks(self):
-        import urllib.request as _ur
-        import xml.etree.ElementTree as _et
-        from email.utils import parsedate_to_datetime
-        try:
-            req = _ur.Request(
-                'https://www.fortiguard.com/rss/outbreakalert.xml',
-                headers={'User-Agent': 'Mozilla/5.0 WebAIAgent/1.0'},
-            )
-            with _ur.urlopen(req, timeout=8) as r:
-                xml_bytes = r.read()
-            root = _et.fromstring(xml_bytes)
-            ns   = {'dc': 'http://purl.org/dc/elements/1.1/'}
-            items = []
-            for item in root.findall('.//item'):
-                title   = (item.findtext('title') or '').strip()
-                link    = (item.findtext('link')  or '').strip()
-                pub_raw = (item.findtext('pubDate') or '').strip()
-                try:
-                    pub_iso = parsedate_to_datetime(pub_raw).isoformat()
-                except Exception:
-                    pub_iso = ''
-                items.append({'title': title, 'link': link, 'pubDate': pub_iso})
-            self.send_json(200, json.dumps({'items': items}).encode())
-        except Exception as e:
-            self.send_json(502, json.dumps({'error': str(e)}).encode())
+        self.send_json(200, json.dumps({'items': _fg_outbreaks_cached()}).encode())
+
+    def serve_outbreak_by_cve(self):
+        """Return FortiGuard outbreak intel matching a CVE ID."""
+        import urllib.parse as _up
+        qs    = _up.parse_qs(_up.urlparse(self.path).query)
+        cve   = (qs.get('cveId', [''])[0]).upper().strip()
+        items = _fg_outbreaks_cached()
+        if not cve:
+            self.send_json(400, json.dumps({'error': 'cveId required'}).encode())
+            return
+        matches = [i for i in items if cve in i.get('cves', [])]
+        self.send_json(200, json.dumps({'cveId': cve, 'outbreaks': matches}).encode())
 
     def serve_lql_generate(self):
         try:

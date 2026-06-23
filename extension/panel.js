@@ -1509,15 +1509,15 @@ el('cve-search').addEventListener('click', runCveSearch);
 el('cve-analyse').addEventListener('click', () => {
   if (!_lastCveData) return;
   el('cve-panel').classList.remove('open');
-  const prompt = buildCveAnalysisPrompt(_lastCveData);
+  const prompt = buildCveAnalysisPrompt(_lastCveData, _lastCveData.fgOutbreaks || []);
   history.push({ role: 'user', content: prompt });
   appendTurn('user', `Analyse attack surface for ${_lastCveData.cveId}`);
-  send(true); // user turn already pushed above; silent avoids re-appending it
+  send(true);
 });
 
 const EXEC_REPORT_TEMPLATE = `Write the full security report using the structure defined in your system prompt.`;
 
-function buildCveAnalysisPrompt(d) {
+function buildCveAnalysisPrompt(d, fgOutbreaks) {
   const fixVer = d.hosts.find(h => h.fix_available)?.fixed_version || 'latest';
   const lines = [
     `Security finding data for ${d.cveId}:`,
@@ -1535,6 +1535,18 @@ function buildCveAnalysisPrompt(d) {
     h.packages.forEach(p  => lines.push(`   pkg: ${p.name} ${p.version}`));
     h.containers.forEach(c => lines.push(`   ctr: ${c.name}${c.internet_exposed ? ' 🌐 INTERNET-EXPOSED' : ''}`));
   });
+
+  if (fgOutbreaks && fgOutbreaks.length) {
+    lines.push(``, `--- FortiGuard Threat Intelligence (Outbreak Alerts) ---`);
+    fgOutbreaks.forEach(o => {
+      lines.push(`Outbreak: ${o.title}`);
+      if (o.risk)    lines.push(`  Risk: ${o.risk}`);
+      if (o.pubDate) lines.push(`  Published: ${o.pubDate.slice(0, 10)}`);
+      if (o.summary) lines.push(`  Summary: ${o.summary}`);
+      if (o.link)    lines.push(`  Reference: ${o.link}`);
+    });
+    lines.push(``, `Use the FortiGuard outbreak intel above to enrich the threat context, MITRE TTPs, and remediation guidance in the report.`);
+  }
 
   lines.push(``, EXEC_REPORT_TEMPLATE);
   return lines.join('\n');
@@ -1554,15 +1566,23 @@ async function runCveSearch() {
   setStatus(`CVE lookup: ${cveId}…`, 'busy');
 
   try {
-    const res = await fetch(BASE_URL + '/lql/cve', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ cveId, days: Number(el('cve-days').value) }),
-    });
-    const data = await res.json();
+    // Fetch CNAPP data and FortiGuard outbreak intel in parallel
+    const [cnappRes, fgRes] = await Promise.all([
+      fetch(BASE_URL + '/lql/cve', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ cveId, days: Number(el('cve-days').value) }),
+      }),
+      fetch(BASE_URL + `/fortiguard/outbreak-by-cve?cveId=${encodeURIComponent(cveId)}`).catch(() => null),
+    ]);
+
+    const data = await cnappRes.json();
     if (data.error) throw new Error(data.error);
 
-    _lastCveData = data;
+    const fgData     = fgRes?.ok ? await fgRes.json().catch(() => null) : null;
+    const fgOutbreaks = fgData?.outbreaks || [];
+    data.fgOutbreaks  = fgOutbreaks;
+    _lastCveData      = data;
 
     // Close the drawer before posting results
     el('cve-panel').classList.remove('open');
@@ -1571,27 +1591,47 @@ async function runCveSearch() {
       const noResultEl = document.createElement('div');
       noResultEl.className = 'cve-summary';
       noResultEl.textContent = data.note || `No hosts found for ${cveId} in the selected window.`;
+      if (fgOutbreaks.length) {
+        noResultEl.textContent += ` FortiGuard has ${fgOutbreaks.length} outbreak alert(s) for this CVE.`;
+      }
       appendResultCard('🔬', `CVE: ${cveId}`, noResultEl);
       setStatus('—');
       return;
     }
 
     const exp = data.internet_exposed;
-    statusEl.textContent = `${data.total_affected} hosts  |  ${exp} internet-exposed  |  ${data.fixable} fixable`;
+    const fgBadge = fgOutbreaks.length ? `  |  ⚠ ${fgOutbreaks.length} FortiGuard outbreak alert(s)` : '';
+    statusEl.textContent = `${data.total_affected} hosts  |  ${exp} internet-exposed  |  ${data.fixable} fixable${fgBadge}`;
     statusEl.className   = exp ? 'err' : 'ok';
-    setStatus(`${cveId}: ${data.total_affected} hosts (${exp} exposed)`, exp ? 'err' : 'ok');
+    setStatus(`${cveId}: ${data.total_affected} hosts (${exp} exposed)${fgOutbreaks.length ? ' ⚠ FortiGuard alert' : ''}`, exp ? 'err' : 'ok');
 
     // Build detached results and post as a card
     const resultsEl = document.createElement('div');
     resultsEl.className = 'cve-result-body';
     renderCveResults(data, resultsEl);
+
+    // Append FortiGuard outbreak intel to the card if available
+    if (fgOutbreaks.length) {
+      const fgEl = document.createElement('div');
+      fgEl.className = 'fg-outbreak-card';
+      fgEl.innerHTML = `<strong>⚠ FortiGuard Outbreak Alert${fgOutbreaks.length > 1 ? 's' : ''}</strong>` +
+        fgOutbreaks.map(o =>
+          `<div class="fg-outbreak-item">
+            <a href="${o.link}" target="_blank">${o.title}</a>
+            ${o.risk ? `<span class="fg-risk fg-risk-${o.risk.toLowerCase()}">${o.risk}</span>` : ''}
+            ${o.pubDate ? `<span class="fg-date">${o.pubDate.slice(0,10)}</span>` : ''}
+          </div>`
+        ).join('');
+      resultsEl.appendChild(fgEl);
+    }
+
     appendResultCard('🔬', `CVE: ${cveId} — ${data.total_affected} hosts (${exp} exposed)`, resultsEl);
 
-    // Auto-trigger executive analysis without waiting for an explicit user message
-    const prompt = buildCveAnalysisPrompt(data);
+    // Auto-trigger executive analysis with combined CNAPP + FortiGuard context
+    const prompt = buildCveAnalysisPrompt(data, fgOutbreaks);
     history.push({ role: 'user', content: prompt });
     appendTurn('user', `Analyse attack surface for ${cveId}`);
-    send(true); // user turn already appended above; silent skips the duplicate
+    send(true);
   } catch (e) {
     statusEl.textContent = `✗ ${e.message}`;
     statusEl.className   = 'err';

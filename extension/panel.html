@@ -881,6 +881,27 @@ a.ext-link:hover { color: var(--accent-d); }
   background: var(--surface2);
   border-radius: 0 0 10px 10px;
 }
+/* FortiGuard outbreak intel card */
+.fg-outbreak-card {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid #cc0000;
+  border-left: 3px solid #cc0000;
+  border-radius: 6px;
+  background: rgba(200,0,0,.05);
+  font-size: 11px;
+}
+.fg-outbreak-card strong { color: #cc0000; display: block; margin-bottom: 4px; }
+.fg-outbreak-item { margin: 3px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fg-outbreak-item a { color: #003366; text-decoration: none; font-weight: 600; }
+.fg-outbreak-item a:hover { text-decoration: underline; }
+.fg-risk { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
+.fg-risk-critical { background: #cc0000; color: #fff; }
+.fg-risk-high     { background: #e65c00; color: #fff; }
+.fg-risk-medium   { background: #f5a623; color: #000; }
+.fg-risk-low      { background: #4caf50; color: #fff; }
+.fg-date { color: #888; font-size: 10px; margin-left: auto; }
+
 /* AI bubble copy btn — sits below the bubble */
 .turn-ai .bubble-col .rc-copy-btn,
 .turn-ai .content .rc-copy-btn {
