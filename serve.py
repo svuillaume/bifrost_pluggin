@@ -717,7 +717,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         from email.utils import parsedate_to_datetime
         try:
             req = _ur.Request(
-                'https://www.fortiguard.com/rss/ir.xml',
+                'https://www.fortiguard.com/rss/outbreakalert.xml',
                 headers={'User-Agent': 'Mozilla/5.0 WebAIAgent/1.0'},
             )
             with _ur.urlopen(req, timeout=8) as r:
