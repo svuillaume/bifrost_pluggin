@@ -234,7 +234,7 @@ function setRendered(node, html) {
 }
 
 // ── Chat log ──────────────────────────────────────────────────────────────
-const scrollLog = () => { const l = el('log'); l.scrollTop = l.scrollHeight; };
+function scrollLog() { const l = el('log'); l.scrollTop = l.scrollHeight; }
 
 function appendTurn(role, text = '') {
   const turn  = Object.assign(document.createElement('div'), { className: 'turn' });
