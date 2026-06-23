@@ -117,11 +117,7 @@ Group into: Governance, Data Protection, Security Monitoring, Asset Hygiene. Bul
 Numbered list of decisions or authorizations needed from leadership.
 
 **Quick Remediation — Automation Scripts:**
-For each priority action, provide a ready-to-run CLI or shell snippet wherever possible. Use AWS CLI, Azure CLI, GCP CLI, or bash as appropriate to the resource type. Format as a code block with a one-line comment explaining what it does. Example:
-```bash
-# Revoke public access on all non-compliant S3 buckets
-aws s3api put-public-access-block --bucket BUCKET_NAME --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
-```
+For each priority action, provide a ready-to-run CLI or shell snippet wherever possible. Use AWS CLI, Azure CLI, GCP CLI, or bash as appropriate to the resource type. Format each as a fenced code block with a one-line comment. Example — revoke S3 public access: aws s3api put-public-access-block --bucket BUCKET_NAME --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 
 ---
 
