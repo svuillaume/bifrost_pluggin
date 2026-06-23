@@ -61,10 +61,7 @@ _fg_cache: dict = {'items': [], 'ts': 0.0}
 def _fg_outbreaks_cached():
     """Fetch and parse FortiGuard outbreak RSS, cache for 30 min. Returns list of items."""
     import re as _re
-    try:
-        import defusedxml.ElementTree as _et
-    except ImportError:
-        import xml.etree.ElementTree as _et
+    import io as _io
     from email.utils import parsedate_to_datetime
 
     now = datetime.now(timezone.utc).timestamp()
@@ -79,7 +76,18 @@ def _fg_outbreaks_cached():
         )
         with _ur.urlopen(req, timeout=10) as r:
             xml_bytes = r.read()
-        root  = _et.fromstring(xml_bytes)
+
+        # Safe XML parsing — prefer defusedxml; harden stdlib fallback
+        try:
+            from defusedxml.ElementTree import fromstring as _safe_fromstring
+            root = _safe_fromstring(xml_bytes)
+        except ImportError:
+            import xml.etree.ElementTree as _stdlib_et
+            # Disable external entity resolution and parameter entity parsing
+            _parser = _stdlib_et.XMLParser()
+            _parser.entity = {}
+            _parser.parser.SetParamEntityParsing(0)
+            root = _stdlib_et.fromstring(xml_bytes, parser=_parser)
         items = []
         for item in root.findall('.//item'):
             title   = (item.findtext('title')       or '').strip()
