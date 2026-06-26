@@ -21,7 +21,7 @@ const SYSTEM_PROMPT = `You are a CISO-level security analyst. For security findi
 <div class="rpt-resources">
   <div class="rpt-resource critical">
     <div class="rpt-resource-name">resource-name</div>
-    <div class="rpt-resource-meta"><span class="rpt-badge critical">Critical</span> region · cloud · account</div>
+    <div class="rpt-resource-meta"><span class="rpt-badge critical">Critical</span> us-east-1 · AWS · account:123456789012 · 🌐 internet-exposed</div>
   </div>
 </div>
 
@@ -1763,7 +1763,7 @@ function buildCveAnalysisPrompt(d, fgOutbreaks) {
       h.container_exposed ? 'CONTAINER-EXPOSED' : '',
       h.fix_available     ? `fix→${h.fixed_version || fixVer}` : '',
     ].filter(Boolean).join(' ');
-    lines.push(`${i + 1}. ${h.hostname} [${h.severity}] risk:${h.host_risk_score.toFixed(1)} ${flags}`);
+    lines.push(`${i + 1}. ${h.hostname} [${h.severity}] account:${h.account || 'unknown'} region:${h.region || ''} risk:${h.host_risk_score.toFixed(1)} ${flags}`);
     h.packages.forEach(p  => lines.push(`   pkg: ${p.name} ${p.version}`));
     h.containers.forEach(c => lines.push(`   ctr: ${c.name}${c.internet_exposed ? ' 🌐 INTERNET-EXPOSED' : ''}`));
   });
@@ -1774,7 +1774,7 @@ function buildCveAnalysisPrompt(d, fgOutbreaks) {
     `1. Metric strip — total affected hosts, internet-exposed count, CVSS score, EPSS %`,
     `2. Executive Review — 2 sentences: what is vulnerable, what is the blast radius. Decision required: patch or isolate.`,
     `3. Business Impact — 2–3 bullets: data breach risk, compliance exposure, operational disruption`,
-    `4. Affected Resources — one resource card per host (hostname, severity badge, internet-exposed flag)`,
+    `4. Affected Resources — one resource card per host. rpt-resource-name must contain the FULL hostname (do not truncate). rpt-resource-meta must include: severity badge, CSP account ID, region, internet-exposed flag if applicable.`,
     `5. How to Fix + Next Steps — patch command, urgency, who owns it`,
   );
   if (intel.kev?.inKev)            lines.push(`NOTE: This CVE is in CISA KEV — actively exploited. Urgency is NOW.`);
@@ -1784,19 +1784,23 @@ function buildCveAnalysisPrompt(d, fgOutbreaks) {
 
 // ── SVG radar + attack-surface bar for CVE threat intelligence ────────────────
 function buildThreatRadarHtml(cveId, intel, data) {
+  const od = intel.fgOutbreakDetail || {};
+
   // Normalise each axis 0-1
   const cvss    = (intel.nvd?.cvssV3Score  ?? 0) / 10;
-  const epss    = intel.epss?.score        ?? 0;          // already 0-1
+  const epss    = intel.epss?.score        ?? 0;
   const kev     = intel.kev?.inKev         ? 1 : 0;
   const fg      = (intel.threatRadarScore  ?? 0) / 100;
   const exposed = data.total_affected > 0
                   ? Math.min(data.internet_exposed / data.total_affected, 1)
                   : 0;
-  // host count axis — normalise on a rough log scale, cap at 1
-  const hostN   = data.total_affected > 0 ? Math.min(Math.log10(data.total_affected + 1) / 3, 1) : 0;
+  // PoC: 1 if public PoC exists, 0 if not, 0.5 if unknown
+  const poc     = od.pocAvailable === true ? 1 : od.pocAvailable === false ? 0 : 0.5;
+  // No-patch risk: 1 if no patch available, 0 if patched
+  const noPatch = od.patchAvailable === true ? 0 : od.patchAvailable === false ? 1 : 0.5;
 
-  const axes  = ['CVSS', 'EPSS', 'KEV', 'FortiGuard', 'Exposed%', 'Hosts'];
-  const vals  = [cvss, epss, kev, fg, exposed, hostN];
+  const axes  = ['CVSS', 'EPSS', 'KEV', 'FortiGuard', 'PoC', 'No Patch', 'Exposed%'];
+  const vals  = [cvss, epss, kev, fg, poc, noPatch, exposed];
   const N     = axes.length;
   const R     = 72;   // radius of chart
   const cx    = 90; const cy = 90;
@@ -1824,7 +1828,7 @@ function buildThreatRadarHtml(cveId, intel, data) {
 
   // Value polygon
   const polyPts = vals.map((v, i) => pt(i, v).join(',')).join(' ');
-  const composite = (cvss * 0.25 + epss * 0.3 + kev * 0.2 + fg * 0.15 + exposed * 0.1);
+  const composite = (cvss * 0.22 + epss * 0.25 + kev * 0.18 + fg * 0.12 + poc * 0.1 + noPatch * 0.08 + exposed * 0.05);
   const radarCol  = composite >= 0.7 ? '#cc0000' : composite >= 0.4 ? '#e65c00' : '#2196f3';
   const scoreLabel = Math.round(composite * 100);
   const scoreLabelCol = composite >= 0.7 ? '#cc0000' : composite >= 0.4 ? '#e65c00' : '#4caf50';
@@ -1876,10 +1880,27 @@ function buildThreatRadarHtml(cveId, intel, data) {
       ? `<div style="background:#fef2f2;border:1.5px solid #cc0000;border-radius:6px;padding:5px 10px;text-align:center;min-width:48px">` +
         `<div style="font-size:10px;font-weight:700;color:#cc0000;line-height:1.6">⚠ KEV</div>` +
         `<div style="font-size:8px;color:#888">exploited</div></div>` : '') +
+    // PoC tile
+    (od.pocAvailable !== undefined
+      ? `<div style="background:#fff;border:1.5px solid ${od.pocAvailable?'#cc0000':'#4caf50'};border-radius:6px;padding:5px 10px;text-align:center;min-width:48px">` +
+        `<div style="font-size:10px;font-weight:700;color:${od.pocAvailable?'#cc0000':'#4caf50'};line-height:1.6">${od.pocAvailable?'⚠ PoC':'✓ No PoC'}</div>` +
+        `<div style="font-size:8px;color:#888">exploit code</div></div>` : '') +
+    // Patch tile
+    (od.patchAvailable !== undefined
+      ? `<div style="background:#fff;border:1.5px solid ${od.patchAvailable?'#4caf50':'#e65c00'};border-radius:6px;padding:5px 10px;text-align:center;min-width:48px">` +
+        `<div style="font-size:10px;font-weight:700;color:${od.patchAvailable?'#4caf50':'#e65c00'};line-height:1.6">${od.patchAvailable?'✓ Patched':'⚠ Unpatched'}</div>` +
+        `<div style="font-size:8px;color:#888">vendor fix</div></div>` : '') +
     `</div>`;
 
   const desc = intel.nvd?.description
     ? `<div style="font-size:10px;color:#555;line-height:1.5;margin-bottom:6px">${intel.nvd.description.slice(0,180)}…</div>`
+    : '';
+
+  // Outbreak timeline snippet
+  const timelineHtml = od.timeline?.length
+    ? `<div style="font-size:9px;color:#666;margin-bottom:6px;border-left:2px solid #e65c00;padding-left:6px">` +
+      od.timeline.slice(0,3).map(t => `<div style="margin-bottom:2px">• ${t}</div>`).join('') +
+      `</div>`
     : '';
 
   const links =
@@ -1887,9 +1908,10 @@ function buildThreatRadarHtml(cveId, intel, data) {
     `<a href="https://www.fortiguard.com/search?q=${encodeURIComponent(cveId)}" target="_blank">FortiGuard</a>` +
     `&nbsp;·&nbsp;<a href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cveId)}" target="_blank">NVD</a>` +
     (intel.kev?.inKev ? `&nbsp;·&nbsp;<a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA KEV</a>` : '') +
+    (od.url ? `&nbsp;·&nbsp;<a href="${od.url}" target="_blank">Outbreak Alert</a>` : '') +
     `</div>`;
 
-  const rightPanel = `<div style="flex:1;min-width:0">${tiles}${desc}${links}</div>`;
+  const rightPanel = `<div style="flex:1;min-width:0">${tiles}${desc}${timelineHtml}${links}</div>`;
 
   return (
     `<div style="font-size:11px;font-weight:600;color:#444;margin-bottom:8px">🎯 ${cveId} — Threat Radar</div>` +
@@ -2587,6 +2609,39 @@ el('lql-objective').addEventListener('keydown', e => {
   if (e.key === 'Enter') el('lql-gen-btn').click();
 });
 
+function _extractPdfTextFallback(b64) {
+  // Decode base64 → binary string, then pull text from PDF content streams.
+  // PDF streams contain human-readable text between BT/ET markers as Tj/TJ operators.
+  try {
+    const binary = atob(b64);
+    // Extract content between stream / endstream markers
+    const chunks = [];
+    const streamRe = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let m;
+    while ((m = streamRe.exec(binary)) !== null) {
+      const chunk = m[1];
+      // Pull Tj / TJ text operators: (text)Tj  or [(text)]TJ
+      const tjRe = /\(([^)]{1,400})\)\s*Tj/g;
+      const tjmRe = /\[([^\]]{1,800})\]\s*TJ/g;
+      let t;
+      while ((t = tjRe.exec(chunk))  !== null) chunks.push(t[1]);
+      while ((t = tjmRe.exec(chunk)) !== null) {
+        // TJ arrays contain (text) fragments interleaved with kerning numbers
+        const parts = t[1].match(/\(([^)]{1,200})\)/g) || [];
+        chunks.push(parts.map(p => p.slice(1, -1)).join(''));
+      }
+    }
+    // Unescape PDF string escapes and join
+    return chunks
+      .map(s => s.replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/\\t/g, ' ')
+                 .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\'))
+      .filter(s => s.trim().length > 1)
+      .join('\n');
+  } catch (e) {
+    return '';
+  }
+}
+
 async function loadCompliancePdfText(reportName) {
   appendTurn('system', `📖 Loading "${reportName}" into context…`);
   try {
@@ -2601,8 +2656,21 @@ async function loadCompliancePdfText(reportName) {
         : data.text;
       history.push({ role: 'user', content: `Here is the content of the compliance report "${data.name}":\n\n${text}\n\nAsk me anything about this report.` });
       appendTurn('system', `✓ "${data.name}" loaded — ask your questions below.`);
+    } else if (data.base64) {
+      // pdftotext not available — decode base64 and extract readable text from PDF binary
+      const text = _extractPdfTextFallback(data.base64);
+      if (text.length > 200) {
+        const MAX = 40000;
+        const truncated = text.length > MAX
+          ? text.slice(0, MAX) + `\n\n[Truncated — ${text.length} chars total]`
+          : text;
+        history.push({ role: 'user', content: `Here is the content of the compliance report "${data.name}" (extracted from PDF):\n\n${truncated}\n\nAsk me anything about this report.` });
+        appendTurn('system', `✓ "${data.name}" loaded (client-side extraction) — ask your questions below.`);
+      } else {
+        appendTurn('system', `⚠ Could not extract text from PDF. Rebuild the Docker image to install pdftotext: docker compose up --build -d webai`);
+      }
     } else if (data.note) {
-      appendTurn('system', `⚠ ${data.note} — PDF text extraction not available.`);
+      appendTurn('system', `⚠ ${data.note}`);
     }
   } catch (e) {
     appendTurn('system', `PDF load error: ${e.message}`);

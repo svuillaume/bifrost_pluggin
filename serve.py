@@ -179,11 +179,21 @@ def _fetch_cve_intel(cve: str) -> dict:
     else:
         result['nvd'] = None
 
-    # FortiGuard outbreaks
+    # FortiGuard outbreaks (from RSS)
     items = _fg_outbreaks_cached()
     result['outbreaks'] = [i for i in items if cve in i.get('cves', [])]
 
-    # Threat Radar score (0–100): CVSS + EPSS + KEV + outbreak
+    # FortiGuard outbreak page scrape — PoC, patch, in-the-wild, timeline
+    outbreak_slug = None
+    if result['outbreaks']:
+        # derive slug from link e.g. https://…/outbreak-alert/log4shell → log4shell
+        link = result['outbreaks'][0].get('link', '')
+        m = re.search(r'/outbreak-alert/([^/?#]+)', link)
+        if m:
+            outbreak_slug = m.group(1)
+    result['fgOutbreakDetail'] = _scrape_fg_outbreak(outbreak_slug) if outbreak_slug else None
+
+    # Threat Radar score (0–100): CVSS + EPSS + KEV + outbreak + PoC + patch
     score = 0
     if result['nvd'] and result['nvd']['cvssV3Score']:
         score += result['nvd']['cvssV3Score'] * 4        # max 40
@@ -192,10 +202,75 @@ def _fetch_cve_intel(cve: str) -> dict:
     if result['kev'] and result['kev'].get('inKev'):
         score += 20                                       # +20 if actively exploited
     if result['outbreaks']:
-        score += 10                                       # +10 if FortiGuard outbreak
+        score += 5                                        # +5 if FortiGuard outbreak
+    od = result['fgOutbreakDetail'] or {}
+    if od.get('pocAvailable'):
+        score += 3                                        # +3 PoC exists
+    if not od.get('patchAvailable'):
+        score += 2                                        # +2 no patch yet
     result['threatRadarScore'] = round(min(score, 100), 1)
 
     _cve_intel_cache[cve] = {**result, '_ts': now}
+    return result
+
+
+def _scrape_fg_outbreak(slug: str) -> dict:
+    """Scrape a FortiGuard outbreak-alert page and return structured signals."""
+    url = f'https://fortiguard.fortinet.com/outbreak-alert/{slug}'
+    try:
+        req  = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 WebAIAgent/1.0'})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            html = r.read().decode('utf-8', errors='replace')
+    except Exception:
+        return {}
+
+    result = {'slug': slug, 'url': url}
+
+    # Risk / severity
+    m = re.search(r'(?:severity|risk)[^>]*>[\s]*([A-Za-z]+)[\s]*<', html, re.I)
+    if m:
+        result['severity'] = m.group(1).capitalize()
+
+    # CVE IDs mentioned on page
+    result['cves'] = list(set(re.findall(r'CVE-\d{4}-\d+', html)))
+
+    # Affected products / vendors
+    m = re.search(r'(?:affected\s+(?:platform|product|vendor)s?)[^:]*:([^<\n]{5,120})', html, re.I)
+    if m:
+        result['affectedProducts'] = m.group(1).strip()
+
+    # PoC availability — look for "proof-of-concept", "poc", "exploit code", "public exploit"
+    poc = bool(re.search(
+        r'proof.of.concept|public\s+(?:exploit|poc)|poc\s+(?:code|released|available)|exploit\s+(?:code|published)',
+        html, re.I))
+    result['pocAvailable'] = poc
+
+    # Patch availability
+    patch = bool(re.search(
+        r'patch(?:es)?\s+(?:released|available|published)|fix(?:es)?\s+(?:released|available)|update\s+available',
+        html, re.I))
+    result['patchAvailable'] = patch
+
+    # In-the-wild exploitation
+    wild = bool(re.search(
+        r'in.the.wild|actively\s+exploit|observed\s+exploit|real.world\s+attack',
+        html, re.I))
+    result['inTheWild'] = wild
+
+    # Timeline entries — grab date lines
+    timeline = re.findall(r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})[^<]{5,120}', html)
+    result['timeline'] = timeline[:8]
+
+    # Days since most recent timeline event (recency signal)
+    result['daysSinceLatest'] = None
+    if timeline:
+        try:
+            from datetime import datetime as _dt
+            latest = _dt.strptime(re.sub(r'[,]', '', timeline[0]).strip(), '%B %d %Y')
+            result['daysSinceLatest'] = (datetime.now(timezone.utc).replace(tzinfo=None) - latest).days
+        except Exception:
+            pass
+
     return result
 
 
@@ -245,6 +320,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.serve_fortiguard_outbreaks()
         elif self.path.startswith('/fortiguard/outbreak-by-cve'):
             self.serve_outbreak_by_cve()
+        elif self.path.startswith('/fortiguard/outbreak-detail'):
+            self.serve_outbreak_detail()
         elif self.path.startswith('/fortiguard/cve-intel'):
             self.serve_cve_intel()
         else:
@@ -1205,6 +1282,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         matches = [i for i in items if cve in i.get('cves', [])]
         self.send_json(200, json.dumps({'cveId': cve, 'outbreaks': matches}).encode())
+
+    def serve_outbreak_detail(self):
+        """Scrape a FortiGuard outbreak page by slug and return structured signals."""
+        qs   = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        slug = (qs.get('slug', [''])[0]).strip()
+        if not slug or not re.match(r'^[\w-]+$', slug):
+            self.send_json(400, json.dumps({'error': 'slug required'}).encode())
+            return
+        self.send_json(200, json.dumps(_scrape_fg_outbreak(slug)).encode())
 
     def serve_cve_intel(self):
         """Aggregate CVE threat intel: FortiGuard outbreaks + EPSS + CISA KEV + NVD CVSS."""
