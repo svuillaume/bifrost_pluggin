@@ -1094,9 +1094,9 @@ a.ext-link:hover { color: var(--accent-d); }
 
 /* Resource grid — compact card-per-resource layout */
 .rpt-resources {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   margin: 8px 0;
 }
 .rpt-resource {
@@ -1106,6 +1106,7 @@ a.ext-link:hover { color: var(--accent-d); }
   border-radius: 6px;
   padding: 7px 9px;
   font-size: 11px;
+  min-width: 0;
 }
 .rpt-resource.critical { border-left-color: #ee3124; }
 .rpt-resource.high     { border-left-color: #e65c00; }
@@ -1115,9 +1116,7 @@ a.ext-link:hover { color: var(--accent-d); }
   font-weight: 700;
   font-size: 11px;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
   margin-bottom: 3px;
 }
 .rpt-resource-meta {
